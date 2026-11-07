@@ -155,7 +155,7 @@ fn main() -> Result<()> {
         Err(_) => {}
     }
 
-    restore_clipboard(content, mime_type)?;
     remove_dir_all(tmp)?;
+    restore_clipboard(content, mime_type)?;
     Ok(())
 }
