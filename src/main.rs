@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::atomic::{AtomicU32, Ordering}};
+use std::{collections::HashMap, fs::{create_dir, remove_dir_all}, path::PathBuf, sync::atomic::{AtomicU32, Ordering}, thread::sleep, time::{Duration, Instant}};
 
 use anyhow::{Result, bail};
 use niri_ipc::{
@@ -27,16 +27,40 @@ fn get_all_windows(sock: &mut Socket) -> Result<Vec<Window>> {
     Ok(windows)
 }
 
+fn get_tmpdir() -> Result<PathBuf> {
+    let mut file = std::env::temp_dir();
+    file.push("niri-search");
+    if !file.exists() {
+        create_dir(&file)?;
+    }
+    return Ok(file);
+}
+
 static FILE_COUNTER: AtomicU32 = AtomicU32::new(1);
+const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn get_window_screen(sock: &mut Socket, win: &Window) -> Result<String> {
-    let mut file = std::env::temp_dir();
+    let mut file = get_tmpdir()?;
     file.push(format!("{}.png", FILE_COUNTER.fetch_add(1,Ordering::Relaxed)));
-    let path = file.into_string().map_err(|e| { anyhow::anyhow!("{:?}",e) })?;
+    let path = file.to_string_lossy().into_owned();
 
     let action = Action::ScreenshotWindow { id: Some(win.id), write_to_disk: true, show_pointer: false, path: Some(path.clone())};
-    let _ = sock.send(Request::Action(action))?;
-    return Ok(path);
+    match sock.send(Request::Action(action))? {
+        Ok(Response::Handled) => {}
+        Ok(other) => bail!("unexpected response: {other:?}"),
+        Err(msg) => bail!("{msg}"),
+    }
+ 
+    let deadline = Instant::now() + SCREENSHOT_TIMEOUT;
+    loop {
+        if file.exists() {
+            return Ok(path);
+        }
+        if Instant::now() >= deadline {
+            bail!("timed out waiting for screenshot {}", path);
+        }
+        sleep(Duration::from_millis(10));
+    }
 }
 
 fn get_workspaces(sock: &mut Socket) -> Result<HashMap<u64, Workspace>> {
@@ -56,6 +80,7 @@ fn focus_window(sock: &mut Socket, win: &Window) -> Result<()> {
 }
 
 fn main() -> Result<()> {
+    let tmp = get_tmpdir()?;
     let mut sock = Socket::connect()?;
     let workspaces = get_workspaces(&mut sock)?;
     let windows = get_all_windows(&mut sock)?;
@@ -77,5 +102,7 @@ fn main() -> Result<()> {
         Ok(selected) => focus_window(&mut sock, windows.get(selected).unwrap())?,
         Err(_) => {}
     }
+
+    remove_dir_all(tmp)?;
     Ok(())
 }
