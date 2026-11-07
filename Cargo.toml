@@ -5,5 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
+fork = "0.11.0"
 niri-ipc = "26.4.0"
 rofi = "0.4.0"
+wl-clipboard-rs = "0.9.5"
