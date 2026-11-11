@@ -116,13 +116,7 @@ fn restore_clipboard(content: Option<Vec<u8>>, mime_type: Option<String>) -> Res
     Ok(())
 }
 
-fn main() -> Result<()> {
-    let tmp = get_tmpdir()?;
-    let mut sock = Socket::connect()?;
-    let workspaces = get_workspaces(&mut sock)?;
-    let windows = get_all_windows(&mut sock)?;
-    let mut list = Vec::new();
-
+fn get_clipboad_content() -> Result<(Option<Vec<u8>>, Option<String>)> {
     let result = paste::get_contents(Regular, paste::Seat::Unspecified, paste::MimeType::Any);
     let mut content = None;
     let mut mime_type = None;
@@ -136,6 +130,17 @@ fn main() -> Result<()> {
         Err(paste::Error::NoSeats | paste::Error::ClipboardEmpty | paste::Error::NoMimeType) => {}
         Err(e) => bail!(e),
     };
+    return Ok((content, mime_type));
+}
+
+fn main() -> Result<()> {
+    let tmp = get_tmpdir()?;
+    let mut sock = Socket::connect()?;
+    let workspaces = get_workspaces(&mut sock)?;
+    let windows = get_all_windows(&mut sock)?;
+    let mut list = Vec::new();
+
+    let (content, mime_type) = get_clipboad_content()?;
 
     for w in &windows {
         let screenshot = get_window_screen(&mut sock, w)?;
